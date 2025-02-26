@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Rabbit Runner</title>
+  <title>3D Bunny Runner</title>
   <style>
     /* Basic reset and styling for full-screen canvas and UI elements */
     body { margin: 0; overflow: hidden; font-family: sans-serif; background: #444; }
@@ -112,6 +112,71 @@
       return rabbitGroup;
     }
 
+    // Create a small red apple (fruit).
+    function createApple() {
+      const apple = new THREE.Group();
+      // Apple body
+      const bodyGeom = new THREE.SphereGeometry(0.3, 8, 8);
+      const bodyMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+      const body = new THREE.Mesh(bodyGeom, bodyMat);
+      apple.add(body);
+      // Stem
+      const stemGeom = new THREE.CylinderGeometry(0.05, 0.05, 0.1, 8);
+      const stemMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+      const stem = new THREE.Mesh(stemGeom, stemMat);
+      stem.position.y = 0.3;
+      apple.add(stem);
+
+      return apple;
+    }
+
+    // Create a green “vegetable” with a cylinder and a small sphere on top.
+    function createVegetable() {
+      const vegetable = new THREE.Group();
+
+      // Main body as a cylinder
+      const bodyGeom = new THREE.CylinderGeometry(0.2, 0.2, 0.6, 8);
+      const bodyMat = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+      const body = new THREE.Mesh(bodyGeom, bodyMat);
+      body.position.y = 0.3; // so bottom is on the ground
+      vegetable.add(body);
+
+      // Top as a small sphere
+      const topGeom = new THREE.SphereGeometry(0.2, 8, 8);
+      const topMat = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+      const top = new THREE.Mesh(topGeom, topMat);
+      top.position.y = 0.6;
+      vegetable.add(top);
+
+      return vegetable;
+    }
+
+    // Create a simple tree (trunk + cone leaves).
+    function createTree() {
+      const trunkGeom = new THREE.CylinderGeometry(0.1, 0.1, 1, 8);
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+      const trunk = new THREE.Mesh(trunkGeom, trunkMat);
+      trunk.position.y = 0.5;
+
+      const leavesGeom = new THREE.ConeGeometry(0.5, 1, 8);
+      const leavesMat = new THREE.MeshStandardMaterial({ color: 0x228B22 });
+      const leaves = new THREE.Mesh(leavesGeom, leavesMat);
+      leaves.position.y = 1.3;
+
+      const tree = new THREE.Group();
+      tree.add(trunk);
+      tree.add(leaves);
+      return tree;
+    }
+
+    // Create a grey dodecahedron to represent a rock.
+    function createRock() {
+      const rockGeom = new THREE.DodecahedronGeometry(0.4);
+      const rockMat = new THREE.MeshStandardMaterial({ color: 0x808080 });
+      const rock = new THREE.Mesh(rockGeom, rockMat);
+      return rock;
+    }
+
     // Update the renderer and camera aspect when the window resizes.
     function onWindowResize() {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -128,59 +193,33 @@
     function onTouchMove(event) {
       if (touchX !== null) {
         const deltaX = event.touches[0].clientX - touchX;
-        // Adjust sensitivity of horizontal movement.
-        rabbitMoveX = deltaX * 0.01;
+        // Reduced sensitivity factor
+        rabbitMoveX = deltaX * 0.003;
       }
     }
 
     // Spawn either a collectible (fruit or vegetable) or an obstacle (tree or rock).
     function spawnObject() {
       const isCollectible = Math.random() < 0.6; // 60% chance collectible
-      let obj, geometry, material;
+      let obj;
+
+      if (isCollectible) {
+        // Randomly choose between fruit and vegetable.
+        const isFruit = Math.random() < 0.5;
+        obj = isFruit ? createApple() : createVegetable();
+        obj.userData = { type: 'collectible' };
+      } else {
+        // Spawn an obstacle: either a tree or a rock.
+        const isTree = Math.random() < 0.5;
+        obj = isTree ? createTree() : createRock();
+        obj.userData = { type: 'obstacle' };
+      }
 
       // Random horizontal position within a defined range.
       const xPos = (Math.random() - 0.5) * 6; // approximately between -3 and 3
       const zPos = -50; // Spawn far ahead in the scene
       const yPos = 0.5;
 
-      if (isCollectible) {
-        // Randomly choose between fruit and vegetable.
-        const isFruit = Math.random() < 0.5;
-        if (isFruit) {
-          // Fruit represented as a red sphere.
-          geometry = new THREE.SphereGeometry(0.3, 8, 8);
-          material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-        } else {
-          // Vegetable represented as a green box.
-          geometry = new THREE.BoxGeometry(0.4, 0.4, 0.4);
-          material = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
-        }
-        obj = new THREE.Mesh(geometry, material);
-        obj.userData = { type: 'collectible' };
-      } else {
-        // Spawn an obstacle: either a tree or a rock.
-        const isTree = Math.random() < 0.5;
-        if (isTree) {
-          // Tree: combine a trunk and a leafy top.
-          const trunkGeom = new THREE.CylinderGeometry(0.1, 0.1, 1, 8);
-          const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
-          const trunk = new THREE.Mesh(trunkGeom, trunkMat);
-          trunk.position.y = 0.5;
-          const leavesGeom = new THREE.ConeGeometry(0.5, 1, 8);
-          const leavesMat = new THREE.MeshStandardMaterial({ color: 0x228B22 });
-          const leaves = new THREE.Mesh(leavesGeom, leavesMat);
-          leaves.position.y = 1.3;
-          obj = new THREE.Group();
-          obj.add(trunk);
-          obj.add(leaves);
-        } else {
-          // Rock: a simple gray sphere.
-          geometry = new THREE.SphereGeometry(0.4, 8, 8);
-          material = new THREE.MeshStandardMaterial({ color: 0x808080 });
-          obj = new THREE.Mesh(geometry, material);
-        }
-        obj.userData = { type: 'obstacle' };
-      }
       obj.position.set(xPos, yPos, zPos);
       scene.add(obj);
       objects.push(obj);
