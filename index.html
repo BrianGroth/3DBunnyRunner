@@ -2,16 +2,23 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>3D Bunny Runner</title>
+  <title>Rabbit Runner</title>
   <style>
-    /* Basic reset and styling for full-screen canvas and UI elements */
-    body { margin: 0; overflow: hidden; font-family: sans-serif; background: #444; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: sans-serif;
+      background: #444; /* fallback if WebGL isn't supported */
+    }
     #score {
       position: absolute;
       top: 10px;
       left: 10px;
       color: #fff;
       font-size: 24px;
+      padding: 6px 10px;
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 4px;
       z-index: 100;
     }
     #ouch {
@@ -22,88 +29,128 @@
       z-index: 100;
       display: none;
       pointer-events: none;
+      text-shadow: 1px 1px 2px #000;
+    }
+    #title {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 28px;
+      padding: 6px 10px;
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 4px;
+      z-index: 100;
     }
   </style>
 </head>
 <body>
+  <div id="title">Rabbit Runner</div>
   <div id="score">Score: 0</div>
   <div id="ouch">OUCH!</div>
-  
+
   <!-- Three.js library from CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
-    // Global variables for scene, camera, and game state.
+    /***********************************************************************
+     * Global variables for scene, camera, renderer, game state
+     ***********************************************************************/
     let scene, camera, renderer, clock;
     let rabbit, rabbitMoveX = 0;
-    let objects = []; // Holds both collectibles and obstacles
+    let objects = [];     // Holds ground obstacles & collectibles
+    let skyObjects = [];  // Holds birds & airplanes
     let score = 0;
     let spawnTimer = 0;
+    let spawnSkyTimer = 0;
     let touchX = null;
+
     const scoreDiv = document.getElementById('score');
     const ouchDiv = document.getElementById('ouch');
 
-    // Initialize the Three.js scene and game objects.
+    /***********************************************************************
+     * Initialization
+     ***********************************************************************/
     function init() {
       scene = new THREE.Scene();
-      scene.fog = new THREE.Fog(0xa0a0a0, 10, 50);
-      
-      // Set up the camera with perspective projection.
-      camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-      camera.position.set(0, 2, 5);
-      
-      // Create the WebGL renderer.
+      // Light blue sky background
+      scene.background = new THREE.Color(0x87CEEB);
+      // Mild fog for depth
+      scene.fog = new THREE.Fog(0x87CEEB, 20, 60);
+
+      // Set up camera with a moderate FOV, positioned to see more of the road
+      camera = new THREE.PerspectiveCamera(
+        60, window.innerWidth / window.innerHeight, 0.1, 1000
+      );
+      camera.position.set(0, 3, 8);
+      camera.lookAt(0, 0, -10);
+
+      // Create WebGL renderer
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       document.body.appendChild(renderer.domElement);
-      
+
       clock = new THREE.Clock();
 
-      // Lighting for a more immersive 3D look.
+      // Lighting
       const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
       hemiLight.position.set(0, 20, 0);
       scene.add(hemiLight);
-      
+
       const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
       dirLight.position.set(-3, 10, -10);
       scene.add(dirLight);
 
-      // Create a large ground plane.
+      // Ground (grass)
       const groundGeo = new THREE.PlaneGeometry(200, 200);
-      const groundMat = new THREE.MeshPhongMaterial({ color: 0x999999, depthWrite: false });
+      const groundMat = new THREE.MeshPhongMaterial({ color: 0x2d5f2e });
       const ground = new THREE.Mesh(groundGeo, groundMat);
-      ground.rotation.x = - Math.PI / 2;
+      ground.rotation.x = -Math.PI / 2;
       scene.add(ground);
 
-      // Create the rabbit character.
+      // Road (black strip in the middle)
+      const roadGeo = new THREE.PlaneGeometry(8, 200);
+      const roadMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
+      const road = new THREE.Mesh(roadGeo, roadMat);
+      road.rotation.x = -Math.PI / 2;
+      road.position.y = 0.01; // Slightly above grass
+      scene.add(road);
+
+      // Guardrails on each side of the road
+      createGuardrails();
+
+      // Create the rabbit character
       rabbit = createRabbit();
       rabbit.position.set(0, 0, 0);
       scene.add(rabbit);
 
-      // Handle window resizing.
+      // Event listeners
       window.addEventListener('resize', onWindowResize, false);
-      // Set up touch events for finger control.
       window.addEventListener('touchstart', onTouchStart, false);
       window.addEventListener('touchmove', onTouchMove, false);
     }
 
-    // Create a simple rabbit model using basic geometries.
+    /***********************************************************************
+     * Create the rabbit character (simple geometry)
+     ***********************************************************************/
     function createRabbit() {
       const rabbitGroup = new THREE.Group();
 
-      // Body: a white sphere.
+      // Body: a white sphere
       const bodyGeom = new THREE.SphereGeometry(0.5, 16, 16);
       const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
       const body = new THREE.Mesh(bodyGeom, bodyMat);
       body.position.y = 0.5;
       rabbitGroup.add(body);
 
-      // Ears: two cylinders.
+      // Ears: two cylinders
       const earGeom = new THREE.CylinderGeometry(0.1, 0.1, 0.8, 8);
       const earMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
       const leftEar = new THREE.Mesh(earGeom, earMat);
       leftEar.position.set(-0.2, 1.3, 0);
       leftEar.rotation.z = 0.2;
       rabbitGroup.add(leftEar);
+
       const rightEar = new THREE.Mesh(earGeom, earMat);
       rightEar.position.set(0.2, 1.3, 0);
       rightEar.rotation.z = -0.2;
@@ -112,7 +159,32 @@
       return rabbitGroup;
     }
 
-    // Create a small red apple (fruit).
+    /***********************************************************************
+     * Create guardrails along the road
+     ***********************************************************************/
+    function createGuardrails() {
+      // Two long boxes on each side
+      const railLength = 200;
+      const railHeight = 0.5;
+      const railThickness = 0.2;
+
+      const railGeo = new THREE.BoxGeometry(railThickness, railHeight, railLength);
+      const railMat = new THREE.MeshPhongMaterial({ color: 0xAAAAAA });
+
+      // Left rail
+      const leftRail = new THREE.Mesh(railGeo, railMat);
+      leftRail.position.set(-4, railHeight / 2, -0);
+      scene.add(leftRail);
+
+      // Right rail
+      const rightRail = new THREE.Mesh(railGeo, railMat);
+      rightRail.position.set(4, railHeight / 2, -0);
+      scene.add(rightRail);
+    }
+
+    /***********************************************************************
+     * Create fruit (apple), vegetable, tree, rock
+     ***********************************************************************/
     function createApple() {
       const apple = new THREE.Group();
       // Apple body
@@ -120,6 +192,7 @@
       const bodyMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
       const body = new THREE.Mesh(bodyGeom, bodyMat);
       apple.add(body);
+
       // Stem
       const stemGeom = new THREE.CylinderGeometry(0.05, 0.05, 0.1, 8);
       const stemMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
@@ -130,10 +203,8 @@
       return apple;
     }
 
-    // Create a green “vegetable” with a cylinder and a small sphere on top.
     function createVegetable() {
       const vegetable = new THREE.Group();
-
       // Main body as a cylinder
       const bodyGeom = new THREE.CylinderGeometry(0.2, 0.2, 0.6, 8);
       const bodyMat = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
@@ -151,7 +222,6 @@
       return vegetable;
     }
 
-    // Create a simple tree (trunk + cone leaves).
     function createTree() {
       const trunkGeom = new THREE.CylinderGeometry(0.1, 0.1, 1, 8);
       const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
@@ -169,7 +239,6 @@
       return tree;
     }
 
-    // Create a grey dodecahedron to represent a rock.
     function createRock() {
       const rockGeom = new THREE.DodecahedronGeometry(0.4);
       const rockMat = new THREE.MeshStandardMaterial({ color: 0x808080 });
@@ -177,47 +246,95 @@
       return rock;
     }
 
-    // Update the renderer and camera aspect when the window resizes.
+    /***********************************************************************
+     * Sky objects: birds and airplanes
+     ***********************************************************************/
+    function createBird() {
+      // A simple “bird” made of a small box for the body and two wings
+      const bird = new THREE.Group();
+      const bodyGeom = new THREE.BoxGeometry(0.4, 0.2, 0.2);
+      const bodyMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+      const body = new THREE.Mesh(bodyGeom, bodyMat);
+      bird.add(body);
+
+      // Wings
+      const wingGeom = new THREE.BoxGeometry(0.6, 0.05, 0.2);
+      const wingMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+      const leftWing = new THREE.Mesh(wingGeom, wingMat);
+      leftWing.position.set(0, 0, 0);
+      leftWing.rotation.z = 0.1;
+      bird.add(leftWing);
+
+      return bird;
+    }
+
+    function createAirplane() {
+      // A small “airplane” geometry
+      const plane = new THREE.Group();
+
+      // Fuselage (cylinder)
+      const fuselageGeom = new THREE.CylinderGeometry(0.1, 0.1, 0.8, 8);
+      const fuselageMat = new THREE.MeshStandardMaterial({ color: 0xff8800 });
+      const fuselage = new THREE.Mesh(fuselageGeom, fuselageMat);
+      fuselage.rotation.z = Math.PI / 2; // lay it horizontally
+      plane.add(fuselage);
+
+      // Wings (box)
+      const wingGeom = new THREE.BoxGeometry(0.3, 0.05, 0.8);
+      const wingMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+      const wings = new THREE.Mesh(wingGeom, wingMat);
+      wings.rotation.y = Math.PI / 2;
+      plane.add(wings);
+
+      return plane;
+    }
+
+    /***********************************************************************
+     * Handle window resize
+     ***********************************************************************/
     function onWindowResize() {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    // Handle the start of a touch event.
+    /***********************************************************************
+     * Touch input
+     ***********************************************************************/
     function onTouchStart(event) {
       touchX = event.touches[0].clientX;
     }
 
-    // Handle finger movement to steer the rabbit horizontally.
     function onTouchMove(event) {
       if (touchX !== null) {
         const deltaX = event.touches[0].clientX - touchX;
-        // Reduced sensitivity factor
-        rabbitMoveX = deltaX * 0.003;
+        // Significantly reduced sensitivity
+        rabbitMoveX = deltaX * 0.0007;
       }
     }
 
-    // Spawn either a collectible (fruit or vegetable) or an obstacle (tree or rock).
+    /***********************************************************************
+     * Spawning ground objects (collectibles & obstacles)
+     ***********************************************************************/
     function spawnObject() {
       const isCollectible = Math.random() < 0.6; // 60% chance collectible
       let obj;
-
       if (isCollectible) {
-        // Randomly choose between fruit and vegetable.
+        // Randomly choose fruit or vegetable
         const isFruit = Math.random() < 0.5;
         obj = isFruit ? createApple() : createVegetable();
         obj.userData = { type: 'collectible' };
       } else {
-        // Spawn an obstacle: either a tree or a rock.
+        // Obstacle: tree or rock
         const isTree = Math.random() < 0.5;
         obj = isTree ? createTree() : createRock();
         obj.userData = { type: 'obstacle' };
       }
 
-      // Random horizontal position within a defined range.
-      const xPos = (Math.random() - 0.5) * 6; // approximately between -3 and 3
-      const zPos = -50; // Spawn far ahead in the scene
+      // Random horizontal position within road bounds
+      // Keep them mostly on the road (±3 range)
+      const xPos = (Math.random() - 0.5) * 6;
+      const zPos = -50; // spawn far ahead
       const yPos = 0.5;
 
       obj.position.set(xPos, yPos, zPos);
@@ -225,7 +342,39 @@
       objects.push(obj);
     }
 
-    // Simple collision detection using distance in the horizontal (x-z) plane.
+    /***********************************************************************
+     * Spawning sky objects (birds & airplanes)
+     ***********************************************************************/
+    function spawnSkyObject() {
+      const isBird = Math.random() < 0.5;
+      const skyObj = isBird ? createBird() : createAirplane();
+      skyObj.userData.type = 'sky';
+
+      // Random direction
+      const leftToRight = Math.random() < 0.5;
+      skyObj.userData.direction = leftToRight ? 'LtoR' : 'RtoL';
+
+      // Random speed
+      skyObj.userData.speed = 1 + Math.random() * 1.5;
+
+      // Random height
+      const yPos = 8 + Math.random() * 2; // between 8 and 10
+      const zPos = -15; // in front of the camera, slightly
+      let xPos;
+      if (leftToRight) {
+        xPos = -15; // start left, move right
+      } else {
+        xPos = 15;  // start right, move left
+      }
+
+      skyObj.position.set(xPos, yPos, zPos);
+      scene.add(skyObj);
+      skyObjects.push(skyObj);
+    }
+
+    /***********************************************************************
+     * Collision detection (rabbit vs. ground objects)
+     ***********************************************************************/
     function checkCollision(obj) {
       const rabbitPos = new THREE.Vector3();
       rabbit.getWorldPosition(rabbitPos);
@@ -236,9 +385,8 @@
       return distance < 0.7; // collision threshold
     }
 
-    // Display the word "OUCH" briefly near the rabbit when hitting an obstacle.
     function showOuch() {
-      // Project the rabbit's 3D position to 2D screen coordinates.
+      // Project the rabbit's 3D position to 2D screen coordinates
       const vector = new THREE.Vector3();
       rabbit.getWorldPosition(vector);
       vector.project(camera);
@@ -249,25 +397,28 @@
       ouchDiv.style.display = 'block';
       setTimeout(() => {
         ouchDiv.style.display = 'none';
-      }, 500); // Display for 0.5 seconds
+      }, 500);
     }
 
-    // Main game loop: update positions, check collisions, spawn new objects, and render.
+    /***********************************************************************
+     * Main animation loop
+     ***********************************************************************/
     function animate() {
       requestAnimationFrame(animate);
       const delta = clock.getDelta();
 
-      // Update rabbit's horizontal position from touch input.
+      // Update rabbit position
       rabbit.position.x += rabbitMoveX;
-      // Keep the rabbit within horizontal bounds.
+      // Clamp within guardrails (road edges at ±3.5, but let's keep a margin)
       rabbit.position.x = Math.max(Math.min(rabbit.position.x, 3), -3);
-      // Gradually reduce the movement delta for smooth control.
+      // Gradual friction on horizontal movement
       rabbitMoveX *= 0.9;
 
-      // Move each spawned object toward the camera.
+      // Move ground objects (z increasing)
       for (let i = objects.length - 1; i >= 0; i--) {
         const obj = objects[i];
-        obj.position.z += 10 * delta; // Move speed
+        obj.position.z += 10 * delta;
+        // Check collision
         if (checkCollision(obj)) {
           if (obj.userData.type === 'collectible') {
             score += 10;
@@ -279,22 +430,53 @@
           scene.remove(obj);
           objects.splice(i, 1);
         } else if (obj.position.z > camera.position.z + 5) {
-          // Remove objects that have passed the camera.
+          // Remove objects that have passed the camera
           scene.remove(obj);
           objects.splice(i, 1);
         }
       }
 
-      // Spawn new objects periodically.
+      // Spawn ground objects periodically
       spawnTimer += delta;
-      if (spawnTimer > 0.8) { // roughly every 0.8 seconds
+      if (spawnTimer > 0.8) {
         spawnObject();
         spawnTimer = 0;
+      }
+
+      // Move sky objects (horizontal only)
+      for (let i = skyObjects.length - 1; i >= 0; i--) {
+        const skyObj = skyObjects[i];
+        const dir = skyObj.userData.direction;
+        const speed = skyObj.userData.speed;
+        if (dir === 'LtoR') {
+          skyObj.position.x += speed * delta;
+          if (skyObj.position.x > 20) {
+            // Remove once out of view
+            scene.remove(skyObj);
+            skyObjects.splice(i, 1);
+          }
+        } else {
+          skyObj.position.x -= speed * delta;
+          if (skyObj.position.x < -20) {
+            scene.remove(skyObj);
+            skyObjects.splice(i, 1);
+          }
+        }
+      }
+
+      // Spawn sky objects every ~3 seconds
+      spawnSkyTimer += delta;
+      if (spawnSkyTimer > 3) {
+        spawnSkyObject();
+        spawnSkyTimer = 0;
       }
 
       renderer.render(scene, camera);
     }
 
+    /***********************************************************************
+     * Start the game
+     ***********************************************************************/
     init();
     animate();
   </script>
