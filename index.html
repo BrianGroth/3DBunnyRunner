@@ -57,13 +57,12 @@
      * Global variables for scene, camera, renderer, game state
      ***********************************************************************/
     let scene, camera, renderer, clock;
-    let rabbit, rabbitMoveX = 0;
+    let rabbit;
     let objects = [];     // Holds ground obstacles & collectibles
     let skyObjects = [];  // Holds birds & airplanes
     let score = 0;
     let spawnTimer = 0;
     let spawnSkyTimer = 0;
-    let touchX = null;
 
     const scoreDiv = document.getElementById('score');
     const ouchDiv = document.getElementById('ouch');
@@ -126,8 +125,8 @@
 
       // Event listeners
       window.addEventListener('resize', onWindowResize, false);
-      window.addEventListener('touchstart', onTouchStart, false);
-      window.addEventListener('touchmove', onTouchMove, false);
+      window.addEventListener('touchstart', onTouch, false);
+      window.addEventListener('touchmove', onTouch, false);
     }
 
     /***********************************************************************
@@ -173,12 +172,12 @@
 
       // Left rail
       const leftRail = new THREE.Mesh(railGeo, railMat);
-      leftRail.position.set(-4, railHeight / 2, -0);
+      leftRail.position.set(-4, railHeight / 2, 0);
       scene.add(leftRail);
 
       // Right rail
       const rightRail = new THREE.Mesh(railGeo, railMat);
-      rightRail.position.set(4, railHeight / 2, -0);
+      rightRail.position.set(4, railHeight / 2, 0);
       scene.add(rightRail);
     }
 
@@ -260,10 +259,9 @@
       // Wings
       const wingGeom = new THREE.BoxGeometry(0.6, 0.05, 0.2);
       const wingMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
-      const leftWing = new THREE.Mesh(wingGeom, wingMat);
-      leftWing.position.set(0, 0, 0);
-      leftWing.rotation.z = 0.1;
-      bird.add(leftWing);
+      const wings = new THREE.Mesh(wingGeom, wingMat);
+      wings.rotation.z = 0.0;
+      bird.add(wings);
 
       return bird;
     }
@@ -299,18 +297,22 @@
     }
 
     /***********************************************************************
-     * Touch input
+     * Touch input (direct position instead of swiping)
      ***********************************************************************/
-    function onTouchStart(event) {
-      touchX = event.touches[0].clientX;
+    function onTouch(event) {
+      event.preventDefault();
+      // We'll use the first touch
+      const clientX = event.touches[0].clientX;
+      setRabbitPosition(clientX);
     }
 
-    function onTouchMove(event) {
-      if (touchX !== null) {
-        const deltaX = event.touches[0].clientX - touchX;
-        // Significantly reduced sensitivity
-        rabbitMoveX = deltaX * 0.0007;
-      }
+    function setRabbitPosition(clientX) {
+      // Map the finger's X coordinate to the range [-3, 3]
+      const ratio = clientX / window.innerWidth;
+      let xPos = ratio * 6 - 3;
+      // Clamp within guardrails
+      xPos = Math.max(-3, Math.min(3, xPos));
+      rabbit.position.x = xPos;
     }
 
     /***********************************************************************
@@ -331,8 +333,7 @@
         obj.userData = { type: 'obstacle' };
       }
 
-      // Random horizontal position within road bounds
-      // Keep them mostly on the road (±3 range)
+      // Random horizontal position within road bounds (±3)
       const xPos = (Math.random() - 0.5) * 6;
       const zPos = -50; // spawn far ahead
       const yPos = 0.5;
@@ -406,13 +407,6 @@
     function animate() {
       requestAnimationFrame(animate);
       const delta = clock.getDelta();
-
-      // Update rabbit position
-      rabbit.position.x += rabbitMoveX;
-      // Clamp within guardrails (road edges at ±3.5, but let's keep a margin)
-      rabbit.position.x = Math.max(Math.min(rabbit.position.x, 3), -3);
-      // Gradual friction on horizontal movement
-      rabbitMoveX *= 0.9;
 
       // Move ground objects (z increasing)
       for (let i = objects.length - 1; i >= 0; i--) {
